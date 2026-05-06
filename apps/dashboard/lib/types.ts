@@ -29,3 +29,26 @@ export type PostFilters = {
   limit?: number;
   offset?: number;
 };
+
+export type CountPoint = {
+  label: string;
+  count: number;
+};
+
+export type TimePoint = {
+  date: string;
+  count: number;
+};
+
+export type TopPost = Post & {
+  engagement_score: number;
+};
+
+export type Analytics = {
+  total_posts: number;
+  volume_over_time: TimePoint[];
+  topic_breakdown: CountPoint[];
+  top_terms: CountPoint[];
+  relevance_distribution: CountPoint[];
+  top_posts: TopPost[];
+};

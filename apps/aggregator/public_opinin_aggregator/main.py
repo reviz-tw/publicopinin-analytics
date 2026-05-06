@@ -4,6 +4,7 @@ import re
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from . import repository
+from .analytics import build_analytics
 from .apify_client import ApifyDatasetClient, ApifySearchClient, SearchResult, normalize_dataset_items
 from .config import Settings, get_settings
 from .db import connect, initialize_database
@@ -11,6 +12,7 @@ from .models import (
     ApifyDatasetSyncCreate,
     ApifySyncRecentCreate,
     ApifySyncRecentRead,
+    AnalyticsRead,
     KeywordCreate,
     KeywordList,
     KeywordRead,
@@ -249,6 +251,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             offset=offset,
         )
         return PostList(total=total, items=rows)
+
+    @app.get("/analytics", response_model=AnalyticsRead)
+    def get_analytics(request: Request, target: str = "國際特赦組織") -> AnalyticsRead:
+        posts = repository.list_posts_for_analytics(request.app.state.db)
+        return AnalyticsRead(**build_analytics(posts, target=target))
 
     return app
 

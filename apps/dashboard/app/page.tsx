@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { fetchPosts } from "../lib/api";
-import type { Post, PostFilters } from "../lib/types";
+import { fetchAnalytics, fetchPosts } from "../lib/api";
+import type { Analytics, CountPoint, Post, PostFilters, TimePoint } from "../lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,7 @@ type SearchParams = {
   date_to?: string;
   page?: string;
   page_size?: string;
+  tab?: string;
 };
 
 type PageProps = {
@@ -21,6 +22,7 @@ type PageProps = {
 
 const DEFAULT_PAGE_SIZE = 25;
 const PLATFORM_OPTIONS = ["threads", "instagram", "facebook", "x", "tiktok", "unknown"];
+const TARGET = "國際特赦組織";
 
 function numberParam(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
@@ -49,6 +51,7 @@ function engagement(post: Post): string {
 }
 
 export default async function DashboardPage({ searchParams = {} }: PageProps) {
+  const activeTab = searchParams.tab === "visualization" ? "visualization" : "all";
   const page = numberParam(searchParams.page, 1);
   const pageSize = numberParam(searchParams.page_size, DEFAULT_PAGE_SIZE);
   const offset = (page - 1) * pageSize;
@@ -64,10 +67,15 @@ export default async function DashboardPage({ searchParams = {} }: PageProps) {
   };
 
   let data = { total: 0, items: [] as Post[] };
+  let analytics: Analytics | null = null;
   let error: string | null = null;
 
   try {
-    data = await fetchPosts(filters);
+    if (activeTab === "visualization") {
+      analytics = await fetchAnalytics(TARGET);
+    } else {
+      data = await fetchPosts(filters);
+    }
   } catch (err) {
     error = err instanceof Error ? err.message : "Unable to load aggregator data";
   }
@@ -85,28 +93,60 @@ export default async function DashboardPage({ searchParams = {} }: PageProps) {
           <p>Review collected posts, narrow candidates, and inspect raw ingestion coverage.</p>
         </div>
         <div className="status">
-          <span>{data.total}</span>
-          <small>matching posts</small>
+          <span>{activeTab === "visualization" ? analytics?.total_posts ?? 0 : data.total}</span>
+          <small>{activeTab === "visualization" ? "analyzed posts" : "matching posts"}</small>
         </div>
       </header>
 
+      <nav className="tabs" aria-label="Dashboard tabs">
+        <Link className={activeTab === "all" ? "active" : ""} href="/">所有資料</Link>
+        <Link className={activeTab === "visualization" ? "active" : ""} href="/?tab=visualization">資料視覺化</Link>
+      </nav>
+
+      {activeTab === "visualization" ? (
+        <VisualizationTab analytics={analytics} error={error} />
+      ) : (
+        <AllDataTab
+          data={data}
+          error={error}
+          searchParams={searchParams}
+          pageSize={pageSize}
+          shownStart={shownStart}
+          shownEnd={shownEnd}
+          clampedPage={clampedPage}
+          totalPages={totalPages}
+        />
+      )}
+    </main>
+  );
+}
+
+function AllDataTab({
+  data,
+  error,
+  searchParams,
+  pageSize,
+  shownStart,
+  shownEnd,
+  clampedPage,
+  totalPages,
+}: {
+  data: { total: number; items: Post[] };
+  error: string | null;
+  searchParams: SearchParams;
+  pageSize: number;
+  shownStart: number;
+  shownEnd: number;
+  clampedPage: number;
+  totalPages: number;
+}) {
+  return (
+    <>
       <section className="summary" aria-label="Summary">
-        <div>
-          <span>{data.total}</span>
-          <p>Total matches</p>
-        </div>
-        <div>
-          <span>{shownStart}-{shownEnd}</span>
-          <p>Visible range</p>
-        </div>
-        <div>
-          <span>{clampedPage}/{totalPages}</span>
-          <p>Page</p>
-        </div>
-        <div>
-          <span>{pageSize}</span>
-          <p>Rows per page</p>
-        </div>
+        <Metric value={data.total} label="Total matches" />
+        <Metric value={`${shownStart}-${shownEnd}`} label="Visible range" />
+        <Metric value={`${clampedPage}/${totalPages}`} label="Page" />
+        <Metric value={pageSize} label="Rows per page" />
       </section>
 
       <form className="filters">
@@ -154,53 +194,189 @@ export default async function DashboardPage({ searchParams = {} }: PageProps) {
 
       {error ? <p className="error">{error}</p> : null}
 
+      <PostsTable
+        posts={data.items}
+        header={`${shownStart}-${shownEnd} of ${data.total}`}
+        searchParams={searchParams}
+        clampedPage={clampedPage}
+        totalPages={totalPages}
+      />
+    </>
+  );
+}
+
+function VisualizationTab({ analytics, error }: { analytics: Analytics | null; error: string | null }) {
+  if (error) {
+    return <p className="error">{error}</p>;
+  }
+
+  if (!analytics) {
+    return <p className="error">No analytics data available.</p>;
+  }
+
+  return (
+    <>
+      <section className="summary" aria-label="Visualization summary">
+        <Metric value={analytics.total_posts} label="Analyzed posts" />
+        <Metric value={analytics.topic_breakdown.length} label="Detected topics" />
+        <Metric value={analytics.top_terms.length} label="Tracked terms" />
+        <Metric value={analytics.top_posts.length} label="Ranked posts" />
+      </section>
+
+      <section className="vizGrid">
+        <Panel title="Volume over time">
+          <TimeBars points={analytics.volume_over_time} />
+        </Panel>
+        <Panel title="Topic breakdown">
+          <HorizontalBars points={analytics.topic_breakdown} />
+        </Panel>
+        <Panel title="Top terms">
+          <TermCloud points={analytics.top_terms} />
+        </Panel>
+        <Panel title="Relevance distribution">
+          <HorizontalBars points={analytics.relevance_distribution} />
+        </Panel>
+      </section>
+
       <section className="tableShell">
         <div className="tableHeader">
-          <p>{shownStart}-{shownEnd} of {data.total}</p>
-          <nav className="pagination" aria-label="Pagination">
-            <Link aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "disabled" : ""} href={pageHref(searchParams, Math.max(1, clampedPage - 1))}>Previous</Link>
-            <span>Page {clampedPage}</span>
-            <Link aria-disabled={clampedPage >= totalPages} className={clampedPage >= totalPages ? "disabled" : ""} href={pageHref(searchParams, Math.min(totalPages, clampedPage + 1))}>Next</Link>
-          </nav>
+          <p>Top posts and repeated narratives</p>
         </div>
-
-        <div className="tableScroller">
-          <table>
-            <thead>
-              <tr>
-                <th>Platform</th>
-                <th>Keyword</th>
-                <th>Author</th>
-                <th>Content</th>
-                <th>Engagement</th>
-                <th>Collected</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((post) => (
-                <tr key={`${post.platform}-${post.source_id}-${post.id}`}>
-                  <td><span className="platform">{post.platform}</span></td>
-                  <td>{post.keyword}</td>
-                  <td>
-                    <strong>{post.author_handle ?? post.author_name ?? "-"}</strong>
-                    {post.author_handle && post.author_name ? <small>{post.author_name}</small> : null}
-                  </td>
-                  <td className="contentCell">
-                    {post.url ? <a href={post.url} target="_blank" rel="noreferrer">{post.content ?? post.url}</a> : post.content ?? "-"}
-                  </td>
-                  <td>{engagement(post)}</td>
-                  <td>{compactDate(post.collected_at)}</td>
-                </tr>
-              ))}
-              {data.items.length === 0 ? (
-                <tr>
-                  <td className="empty" colSpan={6}>No posts match the current filters.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+        <PostsOnlyTable posts={analytics.top_posts} />
       </section>
-    </main>
+    </>
+  );
+}
+
+function Metric({ value, label }: { value: string | number; label: string }) {
+  return (
+    <div>
+      <span>{value}</span>
+      <p>{label}</p>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="panel">
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function HorizontalBars({ points }: { points: CountPoint[] }) {
+  const max = Math.max(1, ...points.map((point) => point.count));
+  return (
+    <div className="bars">
+      {points.map((point) => (
+        <div className="barRow" key={point.label}>
+          <div className="barMeta">
+            <span>{point.label}</span>
+            <strong>{point.count}</strong>
+          </div>
+          <div className="barTrack">
+            <div className="barFill" style={{ width: `${(point.count / max) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TimeBars({ points }: { points: TimePoint[] }) {
+  const max = Math.max(1, ...points.map((point) => point.count));
+  return (
+    <div className="timeBars">
+      {points.slice(-14).map((point) => (
+        <div className="timeBar" key={point.date}>
+          <div style={{ height: `${Math.max(8, (point.count / max) * 120)}px` }} />
+          <span>{point.date}</span>
+          <strong>{point.count}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TermCloud({ points }: { points: CountPoint[] }) {
+  return (
+    <div className="terms">
+      {points.map((point) => (
+        <span key={point.label}>
+          {point.label}<strong>{point.count}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function PostsTable({
+  posts,
+  header,
+  searchParams,
+  clampedPage,
+  totalPages,
+}: {
+  posts: Post[];
+  header: string;
+  searchParams: SearchParams;
+  clampedPage: number;
+  totalPages: number;
+}) {
+  return (
+    <section className="tableShell">
+      <div className="tableHeader">
+        <p>{header}</p>
+        <nav className="pagination" aria-label="Pagination">
+          <Link aria-disabled={clampedPage <= 1} className={clampedPage <= 1 ? "disabled" : ""} href={pageHref(searchParams, Math.max(1, clampedPage - 1))}>Previous</Link>
+          <span>Page {clampedPage}</span>
+          <Link aria-disabled={clampedPage >= totalPages} className={clampedPage >= totalPages ? "disabled" : ""} href={pageHref(searchParams, Math.min(totalPages, clampedPage + 1))}>Next</Link>
+        </nav>
+      </div>
+      <PostsOnlyTable posts={posts} />
+    </section>
+  );
+}
+
+function PostsOnlyTable({ posts }: { posts: Post[] }) {
+  return (
+    <div className="tableScroller">
+      <table>
+        <thead>
+          <tr>
+            <th>Platform</th>
+            <th>Keyword</th>
+            <th>Author</th>
+            <th>Content</th>
+            <th>Engagement</th>
+            <th>Collected</th>
+          </tr>
+        </thead>
+        <tbody>
+          {posts.map((post) => (
+            <tr key={`${post.platform}-${post.source_id}-${post.id}`}>
+              <td><span className="platform">{post.platform}</span></td>
+              <td>{post.keyword}</td>
+              <td>
+                <strong>{post.author_handle ?? post.author_name ?? "-"}</strong>
+                {post.author_handle && post.author_name ? <small>{post.author_name}</small> : null}
+              </td>
+              <td className="contentCell">
+                {post.url ? <a href={post.url} target="_blank" rel="noreferrer">{post.content ?? post.url}</a> : post.content ?? "-"}
+              </td>
+              <td>{engagement(post)}</td>
+              <td>{compactDate(post.collected_at)}</td>
+            </tr>
+          ))}
+          {posts.length === 0 ? (
+            <tr>
+              <td className="empty" colSpan={6}>No posts match the current filters.</td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
   );
 }

@@ -243,3 +243,15 @@ def list_posts(
         [*params, limit, offset],
     ).fetchall()
     return int(total), [row_to_dict(row) for row in rows]
+
+
+def list_posts_for_analytics(connection: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = connection.execute(
+        """
+        SELECT id, platform, source_id, keyword, author_name, author_handle, content, url,
+               published_at, like_count, comment_count, share_count, collected_at
+        FROM posts
+        ORDER BY collected_at DESC, id DESC
+        """
+    ).fetchall()
+    return [row_to_dict(row) for row in rows]

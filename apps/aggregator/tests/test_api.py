@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from public_opinin_aggregator.config import Settings
 from public_opinin_aggregator.db import connect, initialize_database
 from public_opinin_aggregator.main import create_app
+from public_opinin_aggregator import repository
 
 
 class FailingSearchClient:
@@ -172,6 +173,64 @@ def test_posts_endpoint_supports_limit_and_offset_pagination(tmp_path):
     first_page_ids = {item["id"] for item in first_page["items"]}
     second_page_ids = {item["id"] for item in second_page["items"]}
     assert first_page_ids.isdisjoint(second_page_ids)
+
+
+def test_analytics_endpoint_returns_visualization_blocks(tmp_path):
+    db_path = tmp_path / "test.db"
+    app = create_app(isolated_settings(f"sqlite:///{db_path}"))
+    connection = connect(f"sqlite:///{db_path}")
+    initialize_database(connection)
+    for post in [
+        {
+            "platform": "threads",
+            "source_id": "relevant-1",
+            "keyword": "unknown",
+            "author_name": "Author A",
+            "content": "國際特赦組織關注死刑與人權議題",
+            "url": "https://threads.com/t/relevant-1",
+            "like_count": 10,
+            "comment_count": 2,
+            "share_count": 1,
+            "raw_json": {},
+        },
+        {
+            "platform": "x",
+            "source_id": "maybe-1",
+            "keyword": "unknown",
+            "author_name": "Author B",
+            "content": "台灣政治與人權討論升溫",
+            "url": "https://x.com/example/status/1",
+            "like_count": 1,
+            "comment_count": 0,
+            "share_count": 0,
+            "raw_json": {},
+        },
+        {
+            "platform": "threads",
+            "source_id": "noise-1",
+            "keyword": "unknown",
+            "author_name": "Author C",
+            "content": "午餐與生活雜談",
+            "url": "https://threads.com/t/noise-1",
+            "like_count": 0,
+            "comment_count": 0,
+            "share_count": 0,
+            "raw_json": {},
+        },
+    ]:
+        repository.upsert_post(connection, post)
+
+    with TestClient(app) as client:
+        response = client.get("/analytics", params={"target": "國際特赦組織"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["total_posts"] == 3
+    assert payload["volume_over_time"][0]["count"] == 3
+    assert payload["topic_breakdown"][0]["label"] == "人權與國際組織"
+    assert {"label": "國際特赦組織", "count": 1} in payload["top_terms"]
+    assert {"label": "highly_relevant", "count": 1} in payload["relevance_distribution"]
+    assert payload["top_posts"][0]["source_id"] == "relevant-1"
 
 
 def test_search_run_redacts_provider_tokens_from_error_message(tmp_path):

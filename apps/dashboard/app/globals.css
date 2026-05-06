@@ -66,6 +66,32 @@ h1 {
   color: #667386;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 18px;
+  border-bottom: 1px solid #d7dde6;
+}
+
+.tabs a {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  padding: 0 16px;
+  color: #4b5868;
+  text-decoration: none;
+}
+
+.tabs a.active {
+  border-color: #d7dde6;
+  background: #ffffff;
+  color: #17202f;
+  font-weight: 700;
+}
+
 .summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -75,7 +101,8 @@ h1 {
 
 .summary div,
 .filters,
-.tableShell {
+.tableShell,
+.panel {
   border: 1px solid #d7dde6;
   border-radius: 8px;
   background: #ffffff;
@@ -161,6 +188,122 @@ button {
   background: #fff1f1;
   color: #9b1c1c;
   padding: 12px;
+}
+
+.vizGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.panel {
+  min-height: 280px;
+  padding: 16px;
+}
+
+.panel h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.bars {
+  display: grid;
+  gap: 12px;
+}
+
+.barRow {
+  display: grid;
+  gap: 6px;
+}
+
+.barMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #263244;
+  font-size: 14px;
+}
+
+.barMeta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barTrack {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8edf3;
+}
+
+.barFill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: #2f7d73;
+}
+
+.timeBars {
+  display: grid;
+  min-height: 208px;
+  grid-template-columns: repeat(14, minmax(28px, 1fr));
+  gap: 8px;
+  align-items: end;
+  overflow-x: auto;
+  padding-top: 8px;
+}
+
+.timeBar {
+  display: grid;
+  min-width: 28px;
+  gap: 6px;
+  justify-items: center;
+  color: #667386;
+  font-size: 11px;
+}
+
+.timeBar div {
+  width: 100%;
+  border-radius: 5px 5px 0 0;
+  background: #365f8f;
+}
+
+.timeBar span {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  max-height: 74px;
+  overflow: hidden;
+}
+
+.timeBar strong {
+  color: #263244;
+  font-size: 12px;
+}
+
+.terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.terms span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #c8d0dc;
+  border-radius: 999px;
+  background: #f7f9fb;
+  padding: 7px 10px;
+  color: #263244;
+  font-size: 14px;
+}
+
+.terms strong {
+  color: #2f7d73;
+  font-size: 13px;
 }
 
 .tableShell {
@@ -261,6 +404,10 @@ td small {
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .vizGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -282,5 +429,17 @@ td small {
   .summary,
   .filters {
     grid-template-columns: 1fr;
+  }
+
+  .tabs {
+    overflow-x: auto;
+  }
+
+  .tabs a {
+    flex: 0 0 auto;
+  }
+
+  .panel {
+    min-height: 220px;
   }
 }

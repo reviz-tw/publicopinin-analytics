@@ -125,3 +125,26 @@ class PostRead(BaseModel):
 class PostList(BaseModel):
     total: int
     items: list[PostRead]
+
+
+class CountPoint(BaseModel):
+    label: str
+    count: int
+
+
+class TimePoint(BaseModel):
+    date: str
+    count: int
+
+
+class TopPostRead(PostRead):
+    engagement_score: int
+
+
+class AnalyticsRead(BaseModel):
+    total_posts: int
+    volume_over_time: list[TimePoint]
+    topic_breakdown: list[CountPoint]
+    top_terms: list[CountPoint]
+    relevance_distribution: list[CountPoint]
+    top_posts: list[TopPostRead]
