@@ -18,6 +18,7 @@ uvicorn public_opinin_aggregator.main:app --reload
 - `GET /keywords`
 - `POST /keywords`
 - `POST /runs/search` for local dry-run/debug ingestion
+- `POST /apify/datasets/sync-recent`
 - `POST /apify/datasets/{dataset_id}/sync`
 - `POST /webhooks/apify/run-finished`
 - `GET /posts`
@@ -37,6 +38,14 @@ POST https://YOUR_AGGREGATOR_HOST/webhooks/apify/run-finished?platform=threads&k
 ```
 
 The webhook payload must include the Apify run resource with `defaultDatasetId`. The aggregator fetches dataset items, normalizes posts/comments, records an `ingestion_runs` row with Apify metadata, and stores posts/comments in SQLite.
+
+For cron-style local syncing, fetch recent Apify datasets and ingest anything not already synced:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/apify/datasets/sync-recent \
+  -H 'content-type: application/json' \
+  -d '{"limit":20}'
+```
 
 For local debugging with a known dataset ID:
 

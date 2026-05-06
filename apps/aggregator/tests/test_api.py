@@ -16,9 +16,26 @@ class FailingSearchClient:
 class FakeDatasetClient:
     def __init__(self):
         self.dataset_ids: list[str] = []
+        self.recent_limit: int | None = None
+
+    async def list_recent_datasets(self, limit: int):
+        self.recent_limit = limit
+        return [
+            {"id": "dataset-threads", "actId": "actor-threads", "actRunId": "run-threads"},
+            {"id": "dataset-existing", "actId": "actor-existing", "actRunId": "run-existing"},
+        ]
 
     async def get_dataset_items(self, dataset_id: str):
         self.dataset_ids.append(dataset_id)
+        if dataset_id == "dataset-threads":
+            return [
+                {
+                    "id": "post-threads",
+                    "text": "A candidate result that needs local filtering",
+                    "url": "https://www.threads.com/t/abc123",
+                    "authorName": "Threads Author",
+                }
+            ]
         return [
             {
                 "id": "post-1",
@@ -212,3 +229,37 @@ def test_apify_webhook_run_finished_syncs_default_dataset(tmp_path):
     assert payload["status"] == "succeeded"
     assert payload["apify_run_id"] == "run-from-webhook"
     assert payload["apify_dataset_id"] == "dataset-from-webhook"
+
+
+def test_sync_recent_datasets_infers_platform_and_skips_existing_dataset(tmp_path):
+    db_path = tmp_path / "test.db"
+    app = create_app(isolated_settings(f"sqlite:///{db_path}"))
+    dataset_client = FakeDatasetClient()
+    connection = connect(f"sqlite:///{db_path}")
+    initialize_database(connection)
+    connection.execute(
+        """
+        INSERT INTO ingestion_runs (
+            status, requested_keywords, requested_platforms, source, apify_dataset_id,
+            posts_count, comments_count, finished_at
+        )
+        VALUES ('succeeded', '["unknown"]', '["unknown"]', 'apify', 'dataset-existing', 0, 0, CURRENT_TIMESTAMP)
+        """
+    )
+    connection.commit()
+
+    with TestClient(app) as client:
+        client.app.state.dataset_client = dataset_client
+        response = client.post("/apify/datasets/sync-recent", json={"limit": 2})
+        posts = client.get("/posts", params={"platform": "threads", "keyword": "unknown"}).json()
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert dataset_client.recent_limit == 2
+    assert dataset_client.dataset_ids == ["dataset-threads"]
+    assert payload["synced"] == 1
+    assert payload["skipped"] == 1
+    assert payload["runs"][0]["apify_dataset_id"] == "dataset-threads"
+    assert posts["total"] == 1
+    assert posts["items"][0]["platform"] == "threads"
+    assert posts["items"][0]["keyword"] == "unknown"

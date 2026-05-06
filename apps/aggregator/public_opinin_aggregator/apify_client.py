@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import httpx
 
@@ -104,6 +104,25 @@ class ApifyDatasetClient:
     def __init__(self, token: str | None):
         self.token = token
 
+    def _headers(self) -> dict[str, str]:
+        if not self.token:
+            return {}
+        return {"Authorization": f"Bearer {self.token}"}
+
+    async def list_recent_datasets(self, limit: int) -> list[dict[str, Any]]:
+        if not self.token:
+            return []
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.get(
+                "https://api.apify.com/v2/datasets",
+                headers=self._headers(),
+                params={"limit": limit, "desc": "true", "unnamed": "true"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return payload.get("data", {}).get("items", [])
+
     async def get_dataset_items(self, dataset_id: str) -> list[dict[str, Any]]:
         if not self.token:
             return []
@@ -111,15 +130,65 @@ class ApifyDatasetClient:
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.get(
                 f"https://api.apify.com/v2/datasets/{quote_plus(dataset_id)}/items",
-                params={"token": self.token, "clean": "true", "format": "json"},
+                headers=self._headers(),
+                params={"clean": "true", "format": "json"},
             )
             response.raise_for_status()
             return response.json()
 
 
-def normalize_dataset_items(items: list[dict[str, Any]], keyword: str, platform: str) -> SearchResult:
+def infer_platform(item: dict[str, Any]) -> str:
+    urls = _find_url_values(item)
+    for url in urls:
+        hostname = urlparse(url).hostname or ""
+        hostname = hostname.lower()
+        if "threads.net" in hostname or "threads.com" in hostname:
+            return "threads"
+        if "instagram.com" in hostname:
+            return "instagram"
+        if "facebook.com" in hostname or "fb.watch" in hostname:
+            return "facebook"
+        if "x.com" in hostname or "twitter.com" in hostname:
+            return "x"
+        if "tiktok.com" in hostname:
+            return "tiktok"
+    return "unknown"
+
+
+def infer_keyword(item: dict[str, Any]) -> str:
+    for key in ("keyword", "query", "searchTerm", "searchTerms", "searchQuery"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, list) and value and isinstance(value[0], str) and value[0].strip():
+            return value[0].strip()
+    return "unknown"
+
+
+def _find_url_values(value: Any) -> list[str]:
+    urls: list[str] = []
+    if isinstance(value, str) and value.startswith(("http://", "https://")):
+        urls.append(value)
+    elif isinstance(value, dict):
+        for nested in value.values():
+            urls.extend(_find_url_values(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            urls.extend(_find_url_values(nested))
+    return urls
+
+
+def normalize_dataset_items(items: list[dict[str, Any]], keyword: str | None = None, platform: str | None = None) -> SearchResult:
     normalizer = ApifySearchClient(token=None, actors={})
-    posts = [normalizer._normalize_item(item, keyword, platform, index) for index, item in enumerate(items)]
+    posts = [
+        normalizer._normalize_item(
+            item,
+            keyword or infer_keyword(item),
+            platform or infer_platform(item),
+            index,
+        )
+        for index, item in enumerate(items)
+    ]
     comments = []
     for post, item in zip(posts, items, strict=False):
         for comment_index, comment in enumerate(item.get("comments") or []):

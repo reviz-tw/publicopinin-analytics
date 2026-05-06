@@ -77,6 +77,19 @@ def create_apify_run(
     return int(cursor.lastrowid)
 
 
+def dataset_was_synced(connection: sqlite3.Connection, dataset_id: str) -> bool:
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM ingestion_runs
+        WHERE source = 'apify' AND apify_dataset_id = ? AND status = 'succeeded'
+        LIMIT 1
+        """,
+        (dataset_id,),
+    ).fetchone()
+    return row is not None
+
+
 def finish_run(
     connection: sqlite3.Connection,
     run_id: int,

@@ -95,6 +95,17 @@ class ApifyDatasetSyncCreate(BaseModel):
         return normalized
 
 
+class ApifySyncRecentCreate(BaseModel):
+    limit: int = Field(default=20, ge=1, le=1000)
+
+
+class ApifySyncRecentRead(BaseModel):
+    total: int
+    synced: int
+    skipped: int
+    runs: list[SearchRunRead]
+
+
 class PostRead(BaseModel):
     id: int
     platform: str

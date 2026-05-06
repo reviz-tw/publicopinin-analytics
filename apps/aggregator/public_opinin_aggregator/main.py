@@ -7,7 +7,17 @@ from . import repository
 from .apify_client import ApifyDatasetClient, ApifySearchClient, SearchResult, normalize_dataset_items
 from .config import Settings, get_settings
 from .db import connect, initialize_database
-from .models import ApifyDatasetSyncCreate, KeywordCreate, KeywordList, KeywordRead, PostList, SearchRunCreate, SearchRunRead
+from .models import (
+    ApifyDatasetSyncCreate,
+    ApifySyncRecentCreate,
+    ApifySyncRecentRead,
+    KeywordCreate,
+    KeywordList,
+    KeywordRead,
+    PostList,
+    SearchRunCreate,
+    SearchRunRead,
+)
 
 
 def redact_secret_values(message: str) -> str:
@@ -61,6 +71,33 @@ async def sync_apify_dataset(
     except Exception as exc:
         row = repository.finish_run(
             connection,
+            run_id,
+            "failed",
+            0,
+            0,
+            redact_secret_values(str(exc)),
+        )
+    return SearchRunRead(**row)
+
+
+async def sync_recent_apify_dataset(request: Request, dataset: dict) -> SearchRunRead:
+    dataset_id = dataset["id"]
+    items = await request.app.state.dataset_client.get_dataset_items(dataset_id)
+    result = normalize_dataset_items(items)
+    first_post = result.posts[0] if result.posts else {"platform": "unknown", "keyword": "unknown"}
+    run_id = repository.create_apify_run(
+        request.app.state.db,
+        keyword=first_post["keyword"],
+        platform=first_post["platform"],
+        dataset_id=dataset_id,
+        apify_run_id=dataset.get("actRunId"),
+        apify_actor_id=dataset.get("actId"),
+    )
+    try:
+        _, _, row = persist_search_result(request.app.state.db, run_id, result)
+    except Exception as exc:
+        row = repository.finish_run(
+            request.app.state.db,
             run_id,
             "failed",
             0,
@@ -139,6 +176,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             apify_run_id=payload.apify_run_id,
             apify_actor_id=payload.apify_actor_id,
             apify_actor_task_id=payload.apify_actor_task_id,
+        )
+
+    @app.post("/apify/datasets/sync-recent", response_model=ApifySyncRecentRead)
+    async def sync_recent_datasets(payload: ApifySyncRecentCreate, request: Request) -> ApifySyncRecentRead:
+        datasets = await request.app.state.dataset_client.list_recent_datasets(payload.limit)
+        runs: list[SearchRunRead] = []
+        skipped = 0
+        for dataset in datasets:
+            dataset_id = dataset.get("id")
+            if not dataset_id:
+                skipped += 1
+                continue
+            if repository.dataset_was_synced(request.app.state.db, dataset_id):
+                skipped += 1
+                continue
+            runs.append(await sync_recent_apify_dataset(request, dataset))
+        return ApifySyncRecentRead(
+            total=len(datasets),
+            synced=len(runs),
+            skipped=skipped,
+            runs=runs,
         )
 
     @app.post("/webhooks/apify/run-finished", response_model=SearchRunRead)
