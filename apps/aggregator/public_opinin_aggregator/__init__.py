@@ -1,0 +1,1 @@
+"""Public Opinin Aggregator package."""
