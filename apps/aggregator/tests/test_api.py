@@ -5,9 +5,29 @@ from public_opinin_aggregator.db import connect, initialize_database
 from public_opinin_aggregator.main import create_app
 
 
+class FailingSearchClient:
+    async def search(self, keyword, platform):
+        raise RuntimeError(
+            "Client error '400 Bad Request' for url "
+            "'https://api.apify.com/v2/acts/example/run-sync-get-dataset-items?token=secret-token'"
+        )
+
+
+def isolated_settings(database_url: str) -> Settings:
+    return Settings(
+        database_url=database_url,
+        apify_token=None,
+        apify_actor_threads=None,
+        apify_actor_instagram=None,
+        apify_actor_facebook=None,
+        apify_actor_x=None,
+        apify_actor_tiktok=None,
+    )
+
+
 def test_health_endpoint(tmp_path):
     db_url = f"sqlite:///{tmp_path / 'test.db'}"
-    app = create_app(Settings(database_url=db_url))
+    app = create_app(isolated_settings(db_url))
 
     with TestClient(app) as client:
         response = client.get("/health")
@@ -32,7 +52,7 @@ def test_initialize_database_creates_tables(tmp_path):
 
 
 def test_create_and_list_keywords(tmp_path):
-    app = create_app(Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}"))
+    app = create_app(isolated_settings(f"sqlite:///{tmp_path / 'test.db'}"))
 
     with TestClient(app) as client:
         created = client.post("/keywords", json={"value": "election"}).json()
@@ -45,7 +65,7 @@ def test_create_and_list_keywords(tmp_path):
 
 def test_search_run_persists_dry_run_posts_and_comments(tmp_path):
     db_path = tmp_path / "test.db"
-    app = create_app(Settings(database_url=f"sqlite:///{db_path}"))
+    app = create_app(isolated_settings(f"sqlite:///{db_path}"))
 
     with TestClient(app) as client:
         run = client.post(
@@ -70,7 +90,7 @@ def test_search_run_persists_dry_run_posts_and_comments(tmp_path):
 
 
 def test_posts_endpoint_filters_by_text_author_and_date(tmp_path):
-    app = create_app(Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}"))
+    app = create_app(isolated_settings(f"sqlite:///{tmp_path / 'test.db'}"))
 
     with TestClient(app) as client:
         client.post("/runs/search", json={"keywords": ["policy"], "platforms": ["threads"]})
@@ -89,3 +109,19 @@ def test_posts_endpoint_filters_by_text_author_and_date(tmp_path):
     assert matched["total"] == 1
     assert matched["items"][0]["keyword"] == "policy"
     assert unmatched["total"] == 0
+
+
+def test_search_run_redacts_provider_tokens_from_error_message(tmp_path):
+    app = create_app(isolated_settings(f"sqlite:///{tmp_path / 'test.db'}"))
+
+    with TestClient(app) as client:
+        client.app.state.search_client = FailingSearchClient()
+        response = client.post(
+            "/runs/search",
+            json={"keywords": ["policy"], "platforms": ["threads"]},
+        )
+
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert "secret-token" not in payload["error_message"]
+    assert "token=<redacted>" in payload["error_message"]

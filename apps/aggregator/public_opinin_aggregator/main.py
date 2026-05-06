@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import re
 
 from fastapi import FastAPI, Query, Request
 
@@ -7,6 +8,10 @@ from .apify_client import ApifySearchClient
 from .config import Settings, get_settings
 from .db import connect, initialize_database
 from .models import KeywordCreate, KeywordList, KeywordRead, PostList, SearchRunCreate, SearchRunRead
+
+
+def redact_secret_values(message: str) -> str:
+    return re.sub(r"token=[^'&\s]+", "token=<redacted>", message)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -57,7 +62,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                 comments_count += 1
             row = repository.finish_run(connection, run_id, "succeeded", posts_count, comments_count)
         except Exception as exc:
-            row = repository.finish_run(connection, run_id, "failed", posts_count, comments_count, str(exc))
+            row = repository.finish_run(
+                connection,
+                run_id,
+                "failed",
+                posts_count,
+                comments_count,
+                redact_secret_values(str(exc)),
+            )
         return SearchRunRead(**row)
 
     @app.get("/posts", response_model=PostList)
