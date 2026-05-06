@@ -1,0 +1,35 @@
+services:
+  aggregator:
+    build:
+      context: ./apps/aggregator
+    environment:
+      DATABASE_URL: sqlite:////data/public_opinin.db
+      APIFY_TOKEN: ${APIFY_TOKEN:-}
+      APIFY_ACTOR_THREADS: ${APIFY_ACTOR_THREADS:-}
+      APIFY_ACTOR_INSTAGRAM: ${APIFY_ACTOR_INSTAGRAM:-}
+      APIFY_ACTOR_FACEBOOK: ${APIFY_ACTOR_FACEBOOK:-}
+      APIFY_ACTOR_X: ${APIFY_ACTOR_X:-}
+      APIFY_ACTOR_TIKTOK: ${APIFY_ACTOR_TIKTOK:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - aggregator-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard:
+    build:
+      context: ./apps/dashboard
+    environment:
+      NEXT_PUBLIC_AGGREGATOR_API_URL: http://aggregator:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      aggregator:
+        condition: service_healthy
+
+volumes:
+  aggregator-data:

@@ -34,6 +34,19 @@ npm run dev
 
 The dashboard runs at `http://localhost:3000`.
 
+## Docker
+
+Run both services with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+- Aggregator: `http://localhost:8000`
+- Dashboard: `http://localhost:3000`
+
+The compose setup stores SQLite data in the `aggregator-data` Docker volume and sets the dashboard API URL to the internal aggregator service. Apify environment variables can be supplied from your shell or a root `.env` file before running Compose.
+
 ## Environment
 
 Aggregator:
