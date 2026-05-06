@@ -7,6 +7,10 @@ def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return dict(row)
 
 
+def normalize_datetime_filter(value: str) -> str:
+    return value.replace("T", " ")
+
+
 def create_keyword(connection: sqlite3.Connection, value: str) -> dict[str, Any]:
     normalized = value.strip()
     connection.execute(
@@ -203,6 +207,8 @@ def list_posts(
     q: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    sort_by: str = "collected_at",
+    sort_dir: str = "desc",
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[int, list[dict[str, Any]]]:
@@ -224,12 +230,13 @@ def list_posts(
         params.extend([pattern, pattern, pattern])
     if date_from:
         clauses.append("collected_at >= ?")
-        params.append(date_from)
+        params.append(normalize_datetime_filter(date_from))
     if date_to:
         clauses.append("collected_at <= ?")
-        params.append(date_to)
+        params.append(normalize_datetime_filter(date_to))
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    order_by = post_order_by(sort_by, sort_dir)
     total = connection.execute(f"SELECT COUNT(*) AS count FROM posts {where}", params).fetchone()["count"]
     rows = connection.execute(
         f"""
@@ -237,7 +244,7 @@ def list_posts(
                published_at, like_count, comment_count, share_count, collected_at
         FROM posts
         {where}
-        ORDER BY collected_at DESC, id DESC
+        ORDER BY {order_by}
         LIMIT ? OFFSET ?
         """,
         [*params, limit, offset],
@@ -245,13 +252,42 @@ def list_posts(
     return int(total), [row_to_dict(row) for row in rows]
 
 
-def list_posts_for_analytics(connection: sqlite3.Connection) -> list[dict[str, Any]]:
+def post_order_by(sort_by: str, sort_dir: str) -> str:
+    direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
+    fields = {
+        "platform": "lower(platform)",
+        "author": "lower(coalesce(author_handle, author_name, ''))",
+        "collected_at": "collected_at",
+    }
+    expression = fields.get(sort_by, fields["collected_at"])
+    if sort_by == "collected_at":
+        return f"{expression} {direction}, id {direction}"
+    return f"{expression} {direction}, collected_at DESC, id DESC"
+
+
+def list_posts_for_analytics(
+    connection: sqlite3.Connection,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[dict[str, Any]]:
+    clauses = []
+    params: list[Any] = []
+    if date_from:
+        clauses.append("collected_at >= ?")
+        params.append(normalize_datetime_filter(date_from))
+    if date_to:
+        clauses.append("collected_at <= ?")
+        params.append(normalize_datetime_filter(date_to))
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     rows = connection.execute(
-        """
+        f"""
         SELECT id, platform, source_id, keyword, author_name, author_handle, content, url,
                published_at, like_count, comment_count, share_count, collected_at
         FROM posts
+        {where}
         ORDER BY collected_at DESC, id DESC
-        """
+        """,
+        params,
     ).fetchall()
     return [row_to_dict(row) for row in rows]

@@ -236,6 +236,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         q: str | None = None,
         date_from: str | None = None,
         date_to: str | None = None,
+        sort_by: str = Query(default="collected_at", pattern="^(platform|author|collected_at)$"),
+        sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
         limit: int = Query(default=100, ge=1, le=500),
         offset: int = Query(default=0, ge=0),
     ) -> PostList:
@@ -247,14 +249,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             q=q,
             date_from=date_from,
             date_to=date_to,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
             limit=limit,
             offset=offset,
         )
         return PostList(total=total, items=rows)
 
     @app.get("/analytics", response_model=AnalyticsRead)
-    def get_analytics(request: Request, target: str = "國際特赦組織") -> AnalyticsRead:
-        posts = repository.list_posts_for_analytics(request.app.state.db)
+    def get_analytics(
+        request: Request,
+        target: str = "國際特赦組織",
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> AnalyticsRead:
+        posts = repository.list_posts_for_analytics(request.app.state.db, date_from=date_from, date_to=date_to)
         return AnalyticsRead(**build_analytics(posts, target=target))
 
     return app

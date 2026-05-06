@@ -175,6 +175,53 @@ def test_posts_endpoint_supports_limit_and_offset_pagination(tmp_path):
     assert first_page_ids.isdisjoint(second_page_ids)
 
 
+def test_posts_endpoint_supports_sorting_selected_fields(tmp_path):
+    db_path = tmp_path / "test.db"
+    app = create_app(isolated_settings(f"sqlite:///{db_path}"))
+    connection = connect(f"sqlite:///{db_path}")
+    initialize_database(connection)
+    for post in [
+        {
+            "platform": "x",
+            "source_id": "x-1",
+            "keyword": "unknown",
+            "author_name": "Beta Author",
+            "content": "x post",
+            "raw_json": {},
+        },
+        {
+            "platform": "threads",
+            "source_id": "threads-1",
+            "keyword": "unknown",
+            "author_name": "Alpha Author",
+            "content": "threads post",
+            "raw_json": {},
+        },
+        {
+            "platform": "facebook",
+            "source_id": "facebook-1",
+            "keyword": "unknown",
+            "author_name": "Gamma Author",
+            "content": "facebook post",
+            "raw_json": {},
+        },
+    ]:
+        repository.upsert_post(connection, post)
+    connection.execute("UPDATE posts SET collected_at = '2026-05-01 10:00:00' WHERE source_id = 'x-1'")
+    connection.execute("UPDATE posts SET collected_at = '2026-05-02 10:00:00' WHERE source_id = 'threads-1'")
+    connection.execute("UPDATE posts SET collected_at = '2026-05-03 10:00:00' WHERE source_id = 'facebook-1'")
+    connection.commit()
+
+    with TestClient(app) as client:
+        platform_sorted = client.get("/posts", params={"sort_by": "platform", "sort_dir": "asc"}).json()
+        author_sorted = client.get("/posts", params={"sort_by": "author", "sort_dir": "desc"}).json()
+        collected_sorted = client.get("/posts", params={"sort_by": "collected_at", "sort_dir": "asc"}).json()
+
+    assert [item["platform"] for item in platform_sorted["items"]] == ["facebook", "threads", "x"]
+    assert [item["author_name"] for item in author_sorted["items"]] == ["Gamma Author", "Beta Author", "Alpha Author"]
+    assert [item["source_id"] for item in collected_sorted["items"]] == ["x-1", "threads-1", "facebook-1"]
+
+
 def test_analytics_endpoint_returns_visualization_blocks(tmp_path):
     db_path = tmp_path / "test.db"
     app = create_app(isolated_settings(f"sqlite:///{db_path}"))
@@ -231,6 +278,50 @@ def test_analytics_endpoint_returns_visualization_blocks(tmp_path):
     assert {"label": "國際特赦組織", "count": 1} in payload["top_terms"]
     assert {"label": "highly_relevant", "count": 1} in payload["relevance_distribution"]
     assert payload["top_posts"][0]["source_id"] == "relevant-1"
+
+
+def test_analytics_endpoint_filters_by_collected_date_range(tmp_path):
+    db_path = tmp_path / "test.db"
+    app = create_app(isolated_settings(f"sqlite:///{db_path}"))
+    connection = connect(f"sqlite:///{db_path}")
+    initialize_database(connection)
+    for post in [
+        {
+            "platform": "threads",
+            "source_id": "inside-range",
+            "keyword": "unknown",
+            "author_name": "Author A",
+            "content": "國際特赦組織與人權",
+            "raw_json": {},
+        },
+        {
+            "platform": "threads",
+            "source_id": "outside-range",
+            "keyword": "unknown",
+            "author_name": "Author B",
+            "content": "國際特赦組織與死刑",
+            "raw_json": {},
+        },
+    ]:
+        repository.upsert_post(connection, post)
+    connection.execute("UPDATE posts SET collected_at = '2026-05-02 10:00:00' WHERE source_id = 'inside-range'")
+    connection.execute("UPDATE posts SET collected_at = '2026-05-05 10:00:00' WHERE source_id = 'outside-range'")
+    connection.commit()
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/analytics",
+            params={
+                "target": "國際特赦組織",
+                "date_from": "2026-05-01T00:00:00",
+                "date_to": "2026-05-03T00:00:00",
+            },
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["total_posts"] == 1
+    assert payload["top_posts"][0]["source_id"] == "inside-range"
 
 
 def test_search_run_redacts_provider_tokens_from_error_message(tmp_path):

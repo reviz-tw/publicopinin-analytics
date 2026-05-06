@@ -11,9 +11,13 @@ type SearchParams = {
   q?: string;
   date_from?: string;
   date_to?: string;
+  sort_by?: string;
+  sort_dir?: string;
   page?: string;
   page_size?: string;
   tab?: string;
+  analytics_date_from?: string;
+  analytics_date_to?: string;
 };
 
 type PageProps = {
@@ -23,6 +27,7 @@ type PageProps = {
 const DEFAULT_PAGE_SIZE = 25;
 const PLATFORM_OPTIONS = ["threads", "instagram", "facebook", "x", "tiktok", "unknown"];
 const TARGET = "國際特赦組織";
+const SORT_FIELDS = new Set(["platform", "author", "collected_at"]);
 
 function numberParam(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
@@ -36,6 +41,20 @@ function pageHref(params: SearchParams, page: number): string {
       next.set(key, value);
     }
   });
+  return `/?${next.toString()}`;
+}
+
+function sortHref(params: SearchParams, field: string): string {
+  const next = new URLSearchParams();
+  Object.entries({ ...params, page: "1" }).forEach(([key, value]) => {
+    if (value) {
+      next.set(key, value);
+    }
+  });
+  const currentDirection = params.sort_dir === "asc" ? "asc" : "desc";
+  const nextDirection = params.sort_by === field && currentDirection === "asc" ? "desc" : "asc";
+  next.set("sort_by", field);
+  next.set("sort_dir", nextDirection);
   return `/?${next.toString()}`;
 }
 
@@ -62,6 +81,8 @@ export default async function DashboardPage({ searchParams = {} }: PageProps) {
     q: searchParams.q,
     date_from: searchParams.date_from,
     date_to: searchParams.date_to,
+    sort_by: SORT_FIELDS.has(searchParams.sort_by ?? "") ? searchParams.sort_by : undefined,
+    sort_dir: searchParams.sort_dir === "asc" ? "asc" : "desc",
     limit: pageSize,
     offset,
   };
@@ -72,7 +93,10 @@ export default async function DashboardPage({ searchParams = {} }: PageProps) {
 
   try {
     if (activeTab === "visualization") {
-      analytics = await fetchAnalytics(TARGET);
+      analytics = await fetchAnalytics(TARGET, {
+        date_from: searchParams.analytics_date_from,
+        date_to: searchParams.analytics_date_to,
+      });
     } else {
       data = await fetchPosts(filters);
     }
@@ -104,7 +128,7 @@ export default async function DashboardPage({ searchParams = {} }: PageProps) {
       </nav>
 
       {activeTab === "visualization" ? (
-        <VisualizationTab analytics={analytics} error={error} />
+        <VisualizationTab analytics={analytics} error={error} searchParams={searchParams} />
       ) : (
         <AllDataTab
           data={data}
@@ -188,6 +212,8 @@ function AllDataTab({
           </select>
         </label>
         <input type="hidden" name="page" value="1" />
+        {searchParams.sort_by ? <input type="hidden" name="sort_by" value={searchParams.sort_by} /> : null}
+        {searchParams.sort_dir ? <input type="hidden" name="sort_dir" value={searchParams.sort_dir} /> : null}
         <button type="submit">Apply</button>
         <Link className="reset" href="/">Reset</Link>
       </form>
@@ -205,7 +231,15 @@ function AllDataTab({
   );
 }
 
-function VisualizationTab({ analytics, error }: { analytics: Analytics | null; error: string | null }) {
+function VisualizationTab({
+  analytics,
+  error,
+  searchParams,
+}: {
+  analytics: Analytics | null;
+  error: string | null;
+  searchParams: SearchParams;
+}) {
   if (error) {
     return <p className="error">{error}</p>;
   }
@@ -216,6 +250,20 @@ function VisualizationTab({ analytics, error }: { analytics: Analytics | null; e
 
   return (
     <>
+      <form className="dateFilters">
+        <input type="hidden" name="tab" value="visualization" />
+        <label>
+          <span>From</span>
+          <input name="analytics_date_from" type="datetime-local" defaultValue={searchParams.analytics_date_from ?? ""} />
+        </label>
+        <label>
+          <span>To</span>
+          <input name="analytics_date_to" type="datetime-local" defaultValue={searchParams.analytics_date_to ?? ""} />
+        </label>
+        <button type="submit">Apply</button>
+        <Link className="reset" href="/?tab=visualization">Reset</Link>
+      </form>
+
       <section className="summary" aria-label="Visualization summary">
         <Metric value={analytics.total_posts} label="Analyzed posts" />
         <Metric value={analytics.topic_breakdown.length} label="Detected topics" />
@@ -335,23 +383,31 @@ function PostsTable({
           <Link aria-disabled={clampedPage >= totalPages} className={clampedPage >= totalPages ? "disabled" : ""} href={pageHref(searchParams, Math.min(totalPages, clampedPage + 1))}>Next</Link>
         </nav>
       </div>
-      <PostsOnlyTable posts={posts} />
+      <PostsOnlyTable posts={posts} searchParams={searchParams} sortable />
     </section>
   );
 }
 
-function PostsOnlyTable({ posts }: { posts: Post[] }) {
+function PostsOnlyTable({
+  posts,
+  searchParams,
+  sortable = false,
+}: {
+  posts: Post[];
+  searchParams?: SearchParams;
+  sortable?: boolean;
+}) {
   return (
     <div className="tableScroller">
       <table>
         <thead>
           <tr>
-            <th>Platform</th>
+            <th>{sortable && searchParams ? <SortLink field="platform" label="Platform" searchParams={searchParams} /> : "Platform"}</th>
             <th>Keyword</th>
-            <th>Author</th>
+            <th>{sortable && searchParams ? <SortLink field="author" label="Author" searchParams={searchParams} /> : "Author"}</th>
             <th>Content</th>
             <th>Engagement</th>
-            <th>Collected</th>
+            <th>{sortable && searchParams ? <SortLink field="collected_at" label="Collected" searchParams={searchParams} /> : "Collected"}</th>
           </tr>
         </thead>
         <tbody>
@@ -378,5 +434,16 @@ function PostsOnlyTable({ posts }: { posts: Post[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SortLink({ field, label, searchParams }: { field: string; label: string; searchParams: SearchParams }) {
+  const active = searchParams.sort_by === field;
+  const direction = searchParams.sort_dir === "asc" ? "asc" : "desc";
+  return (
+    <Link className={active ? "sortLink active" : "sortLink"} href={sortHref(searchParams, field)}>
+      <span>{label}</span>
+      {active ? <small>{direction}</small> : null}
+    </Link>
   );
 }

@@ -26,8 +26,15 @@ export type PostFilters = {
   q?: string;
   date_from?: string;
   date_to?: string;
+  sort_by?: string;
+  sort_dir?: string;
   limit?: number;
   offset?: number;
+};
+
+export type AnalyticsFilters = {
+  date_from?: string;
+  date_to?: string;
 };
 
 export type CountPoint = {

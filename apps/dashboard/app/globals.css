@@ -130,6 +130,14 @@ h1 {
   margin-bottom: 14px;
 }
 
+.dateFilters {
+  display: grid;
+  grid-template-columns: 220px 220px auto auto 1fr;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
 label {
   display: grid;
   gap: 5px;
@@ -348,6 +356,28 @@ button {
   pointer-events: none;
 }
 
+.sortLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.sortLink small {
+  border: 1px solid #c8d0dc;
+  border-radius: 999px;
+  padding: 1px 6px;
+  color: #263244;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.sortLink.active {
+  color: #17202f;
+}
+
 .tableScroller {
   overflow-x: auto;
 }
@@ -405,6 +435,10 @@ td small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dateFilters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .vizGrid {
     grid-template-columns: 1fr;
   }
@@ -427,7 +461,8 @@ td small {
   }
 
   .summary,
-  .filters {
+  .filters,
+  .dateFilters {
     grid-template-columns: 1fr;
   }
 
