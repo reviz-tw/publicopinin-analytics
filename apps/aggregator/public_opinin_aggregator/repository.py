@@ -204,6 +204,7 @@ def list_posts(
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> tuple[int, list[dict[str, Any]]]:
     clauses = []
     params: list[Any] = []
@@ -237,8 +238,8 @@ def list_posts(
         FROM posts
         {where}
         ORDER BY collected_at DESC, id DESC
-        LIMIT ?
+        LIMIT ? OFFSET ?
         """,
-        [*params, limit],
+        [*params, limit, offset],
     ).fetchall()
     return int(total), [row_to_dict(row) for row in rows]

@@ -235,6 +235,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         date_from: str | None = None,
         date_to: str | None = None,
         limit: int = Query(default=100, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
     ) -> PostList:
         total, rows = repository.list_posts(
             request.app.state.db,
@@ -245,6 +246,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             date_from=date_from,
             date_to=date_to,
             limit=limit,
+            offset=offset,
         )
         return PostList(total=total, items=rows)
 

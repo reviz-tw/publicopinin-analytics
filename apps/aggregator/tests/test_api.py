@@ -157,6 +157,23 @@ def test_posts_endpoint_filters_by_text_author_and_date(tmp_path):
     assert unmatched["total"] == 0
 
 
+def test_posts_endpoint_supports_limit_and_offset_pagination(tmp_path):
+    app = create_app(isolated_settings(f"sqlite:///{tmp_path / 'test.db'}"))
+
+    with TestClient(app) as client:
+        for keyword in ("alpha", "beta", "gamma"):
+            client.post("/runs/search", json={"keywords": [keyword], "platforms": ["threads"]})
+        first_page = client.get("/posts", params={"limit": 2, "offset": 0}).json()
+        second_page = client.get("/posts", params={"limit": 2, "offset": 2}).json()
+
+    assert first_page["total"] == 3
+    assert len(first_page["items"]) == 2
+    assert len(second_page["items"]) == 1
+    first_page_ids = {item["id"] for item in first_page["items"]}
+    second_page_ids = {item["id"] for item in second_page["items"]}
+    assert first_page_ids.isdisjoint(second_page_ids)
+
+
 def test_search_run_redacts_provider_tokens_from_error_message(tmp_path):
     app = create_app(isolated_settings(f"sqlite:///{tmp_path / 'test.db'}"))
 
