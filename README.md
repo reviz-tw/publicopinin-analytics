@@ -4,7 +4,7 @@ Monorepo for public opinion collection and analytics.
 
 ## Apps
 
-- `apps/aggregator`: FastAPI service that manages keywords, triggers Apify-backed ingestion, stores posts/comments in SQLite, and exposes dashboard APIs.
+- `apps/aggregator`: FastAPI service that manages keywords, ingests Apify task datasets from webhooks/manual sync, stores posts/comments in SQLite, and exposes dashboard APIs.
 - `apps/dashboard`: Next.js dashboard that visualizes records exposed by the aggregator API.
 - `packages/shared`: API and database contracts shared between apps.
 
@@ -40,7 +40,7 @@ Aggregator:
 
 - `DATABASE_URL`: SQLite URL, defaults to `sqlite:///./data/public_opinin.db`.
 - `APIFY_TOKEN`: optional Apify token. If omitted, ingestion runs in dry-run mode.
-- `APIFY_ACTOR_THREADS`, `APIFY_ACTOR_INSTAGRAM`, `APIFY_ACTOR_FACEBOOK`, `APIFY_ACTOR_X`, `APIFY_ACTOR_TIKTOK`: optional actor IDs per platform.
+- `APIFY_ACTOR_THREADS`, `APIFY_ACTOR_INSTAGRAM`, `APIFY_ACTOR_FACEBOOK`, `APIFY_ACTOR_X`, `APIFY_ACTOR_TIKTOK`: optional actor IDs per platform for the local debug `/runs/search` endpoint.
 
 Dashboard:
 

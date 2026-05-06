@@ -38,10 +38,40 @@ def active_keyword_values(connection: sqlite3.Connection) -> list[str]:
 def create_run(connection: sqlite3.Connection, keywords: list[str], platforms: list[str]) -> int:
     cursor = connection.execute(
         """
-        INSERT INTO ingestion_runs (status, requested_keywords, requested_platforms)
-        VALUES ('running', ?, ?)
+        INSERT INTO ingestion_runs (status, requested_keywords, requested_platforms, source)
+        VALUES ('running', ?, ?, 'debug')
         """,
         (json.dumps(keywords), json.dumps(platforms)),
+    )
+    connection.commit()
+    return int(cursor.lastrowid)
+
+
+def create_apify_run(
+    connection: sqlite3.Connection,
+    keyword: str,
+    platform: str,
+    dataset_id: str,
+    apify_run_id: str | None = None,
+    apify_actor_id: str | None = None,
+    apify_actor_task_id: str | None = None,
+) -> int:
+    cursor = connection.execute(
+        """
+        INSERT INTO ingestion_runs (
+            status, requested_keywords, requested_platforms, source,
+            apify_run_id, apify_actor_id, apify_actor_task_id, apify_dataset_id
+        )
+        VALUES ('running', ?, ?, 'apify', ?, ?, ?, ?)
+        """,
+        (
+            json.dumps([keyword]),
+            json.dumps([platform]),
+            apify_run_id,
+            apify_actor_id,
+            apify_actor_task_id,
+            dataset_id,
+        ),
     )
     connection.commit()
     return int(cursor.lastrowid)

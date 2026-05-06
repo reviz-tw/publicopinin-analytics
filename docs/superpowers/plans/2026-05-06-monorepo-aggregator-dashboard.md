@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a runnable monorepo with a FastAPI social-search aggregator backed by SQLite, a Next.js dashboard that reads aggregator APIs, and shared contract documentation.
+**Goal:** Build a runnable monorepo with a FastAPI Apify dataset ingestion service backed by SQLite, a Next.js dashboard that reads aggregator APIs, and shared contract documentation.
 
-**Architecture:** The aggregator owns all SQLite access and exposes HTTP APIs for both ingestion and reads. The dashboard is a separate Next.js app that calls those APIs and never opens the database file directly. Shared contracts live under `packages/shared` so generated clients can be added later without changing app boundaries.
+**Architecture:** Apify Tasks and Schedules own the production timer. The aggregator owns all SQLite access, ingests Apify datasets from webhooks/manual sync endpoints, keeps `/runs/search` as a debug path, and exposes read APIs for the dashboard. The dashboard is a separate Next.js app that calls those APIs and never opens the database file directly.
 
 **Tech Stack:** Python 3.11+, FastAPI, SQLite, pytest, httpx, Next.js App Router, TypeScript, CSS modules/plain CSS, Node.js 20+.
 

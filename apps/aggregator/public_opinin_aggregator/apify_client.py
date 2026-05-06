@@ -98,3 +98,30 @@ class ApifySearchClient:
             "like_count": item.get("likesCount") or item.get("likeCount"),
             "raw_json": item,
         }
+
+
+class ApifyDatasetClient:
+    def __init__(self, token: str | None):
+        self.token = token
+
+    async def get_dataset_items(self, dataset_id: str) -> list[dict[str, Any]]:
+        if not self.token:
+            return []
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.get(
+                f"https://api.apify.com/v2/datasets/{quote_plus(dataset_id)}/items",
+                params={"token": self.token, "clean": "true", "format": "json"},
+            )
+            response.raise_for_status()
+            return response.json()
+
+
+def normalize_dataset_items(items: list[dict[str, Any]], keyword: str, platform: str) -> SearchResult:
+    normalizer = ApifySearchClient(token=None, actors={})
+    posts = [normalizer._normalize_item(item, keyword, platform, index) for index, item in enumerate(items)]
+    comments = []
+    for post, item in zip(posts, items, strict=False):
+        for comment_index, comment in enumerate(item.get("comments") or []):
+            comments.append(normalizer._normalize_comment(comment, post["source_id"], platform, comment_index))
+    return SearchResult(posts=posts, comments=comments)

@@ -59,11 +59,40 @@ class SearchRunRead(BaseModel):
     status: str
     requested_keywords: list[str]
     requested_platforms: list[str]
+    source: str = "debug"
+    apify_run_id: str | None = None
+    apify_actor_id: str | None = None
+    apify_actor_task_id: str | None = None
+    apify_dataset_id: str | None = None
     posts_count: int
     comments_count: int
     error_message: str | None
     started_at: str
     finished_at: str | None
+
+
+class ApifyDatasetSyncCreate(BaseModel):
+    platform: str
+    keyword: str
+    apify_run_id: str | None = None
+    apify_actor_id: str | None = None
+    apify_actor_task_id: str | None = None
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in PLATFORMS:
+            raise ValueError(f"Unsupported platform: {value}")
+        return normalized
+
+    @field_validator("keyword")
+    @classmethod
+    def normalize_keyword(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Keyword cannot be blank")
+        return normalized
 
 
 class PostRead(BaseModel):

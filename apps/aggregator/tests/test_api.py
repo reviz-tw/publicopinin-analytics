@@ -13,6 +13,35 @@ class FailingSearchClient:
         )
 
 
+class FakeDatasetClient:
+    def __init__(self):
+        self.dataset_ids: list[str] = []
+
+    async def get_dataset_items(self, dataset_id: str):
+        self.dataset_ids.append(dataset_id)
+        return [
+            {
+                "id": "post-1",
+                "text": "Dataset item about 國際特赦組織",
+                "url": "https://example.com/post-1",
+                "authorName": "Dataset Author",
+                "authorHandle": "@dataset_author",
+                "likesCount": 7,
+                "commentsCount": 1,
+                "sharesCount": 2,
+                "comments": [
+                    {
+                        "id": "comment-1",
+                        "text": "Dataset comment",
+                        "authorName": "Comment Author",
+                        "authorHandle": "@comment_author",
+                        "likesCount": 3,
+                    }
+                ],
+            }
+        ]
+
+
 def isolated_settings(database_url: str) -> Settings:
     return Settings(
         database_url=database_url,
@@ -125,3 +154,61 @@ def test_search_run_redacts_provider_tokens_from_error_message(tmp_path):
     assert payload["status"] == "failed"
     assert "secret-token" not in payload["error_message"]
     assert "token=<redacted>" in payload["error_message"]
+
+
+def test_manual_dataset_sync_persists_posts_comments_and_run_metadata(tmp_path):
+    app = create_app(isolated_settings(f"sqlite:///{tmp_path / 'test.db'}"))
+    dataset_client = FakeDatasetClient()
+
+    with TestClient(app) as client:
+        client.app.state.dataset_client = dataset_client
+        run = client.post(
+            "/apify/datasets/dataset-123/sync",
+            json={
+                "platform": "threads",
+                "keyword": "國際特赦組織",
+                "apify_run_id": "run-123",
+                "apify_actor_id": "actor-123",
+                "apify_actor_task_id": "task-123",
+            },
+        ).json()
+        posts = client.get("/posts", params={"keyword": "國際特赦組織", "platform": "threads"}).json()
+
+    assert dataset_client.dataset_ids == ["dataset-123"]
+    assert run["status"] == "succeeded"
+    assert run["source"] == "apify"
+    assert run["apify_dataset_id"] == "dataset-123"
+    assert run["apify_run_id"] == "run-123"
+    assert run["posts_count"] == 1
+    assert run["comments_count"] == 1
+    assert posts["total"] == 1
+    assert posts["items"][0]["content"] == "Dataset item about 國際特赦組織"
+
+
+def test_apify_webhook_run_finished_syncs_default_dataset(tmp_path):
+    app = create_app(isolated_settings(f"sqlite:///{tmp_path / 'test.db'}"))
+    dataset_client = FakeDatasetClient()
+
+    with TestClient(app) as client:
+        client.app.state.dataset_client = dataset_client
+        response = client.post(
+            "/webhooks/apify/run-finished",
+            params={"platform": "threads", "keyword": "國際特赦組織"},
+            json={
+                "eventType": "ACTOR.RUN.SUCCEEDED",
+                "resource": {
+                    "id": "run-from-webhook",
+                    "status": "SUCCEEDED",
+                    "actId": "actor-from-webhook",
+                    "actorTaskId": "task-from-webhook",
+                    "defaultDatasetId": "dataset-from-webhook",
+                },
+            },
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert dataset_client.dataset_ids == ["dataset-from-webhook"]
+    assert payload["status"] == "succeeded"
+    assert payload["apify_run_id"] == "run-from-webhook"
+    assert payload["apify_dataset_id"] == "dataset-from-webhook"

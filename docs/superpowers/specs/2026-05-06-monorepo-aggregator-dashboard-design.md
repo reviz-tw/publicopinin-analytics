@@ -4,7 +4,7 @@
 
 Convert this repository into a monorepo with two runnable applications:
 
-- `apps/aggregator`: a Python/FastAPI service that manages keywords, exposes scheduler-friendly ingestion endpoints, fetches social search results through Apify adapters, stores full post/comment data in SQLite, and exposes read APIs for visualization.
+- `apps/aggregator`: a Python/FastAPI service that manages keywords, ingests Apify task datasets through webhooks or manual sync endpoints, stores full post/comment data in SQLite, and exposes read APIs for visualization.
 - `apps/dashboard`: a Next.js data visualization site that reads aggregator APIs and displays stored posts with field filters.
 - `packages/shared`: shared API contract and database schema documentation.
 
@@ -23,12 +23,14 @@ The monorepo root provides developer documentation and convenience commands. Eac
 The aggregator is a FastAPI service with these responsibilities:
 
 - Manage keywords through `GET /keywords` and `POST /keywords`.
-- Trigger ingestion through `POST /runs/search`, which is suitable for an external scheduler such as cron, GitHub Actions, or another HTTP scheduler.
+- Ingest Apify task results through `POST /webhooks/apify/run-finished`, where Apify Schedules own the actual timer.
+- Support manual dataset backfills through `POST /apify/datasets/{dataset_id}/sync`.
+- Keep `POST /runs/search` as a local development/debug endpoint rather than the production scheduling path.
 - Persist ingestion metadata, posts, and comments in SQLite.
 - Expose `GET /posts` for dashboard reads, including filters by keyword, platform, date range, author, and free text.
 - Provide `GET /health` for process checks.
 
-The MVP uses a provider adapter boundary for Apify. Production ingestion calls Apify when `APIFY_TOKEN` is present and dry-run/mock ingestion can be used locally without network credentials. Platform-specific actor IDs are configured through environment variables so the code does not hard-code actor choices before the exact Apify actors are known.
+The MVP uses Apify Tasks and Schedules as the production scheduling layer. The aggregator fetches dataset items by `defaultDatasetId` when a succeeded-run webhook arrives, then normalizes posts/comments into SQLite. Platform-specific actor IDs remain configurable only for the retained local debug search endpoint.
 
 ## Dashboard
 
@@ -55,7 +57,7 @@ Generated clients are out of scope for the first pass. The package exists now so
 SQLite tables:
 
 - `keywords`: keyword records, active state, timestamps.
-- `ingestion_runs`: each scheduler/manual run, requested platforms, status, item counts, error message.
+- `ingestion_runs`: each Apify/manual/debug run, requested platforms, status, item counts, Apify run/task/dataset metadata, error message.
 - `posts`: normalized searchable post rows plus `raw_json` for complete source data.
 - `comments`: normalized comments linked to posts plus `raw_json` for complete source data.
 
@@ -79,7 +81,8 @@ This implementation creates a working local MVP:
 - Monorepo structure.
 - FastAPI service with SQLite persistence.
 - Dry-run/mock ingestion path.
-- Apify adapter boundary and environment configuration.
+- Apify webhook and dataset sync endpoints.
+- Retained dry-run/debug ingestion path.
 - Next.js dashboard with filters and table display.
 - Shared schema documentation.
 

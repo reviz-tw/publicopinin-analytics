@@ -35,6 +35,11 @@ def initialize_database(connection: sqlite3.Connection) -> None:
             status TEXT NOT NULL,
             requested_keywords TEXT NOT NULL,
             requested_platforms TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'debug',
+            apify_run_id TEXT,
+            apify_actor_id TEXT,
+            apify_actor_task_id TEXT,
+            apify_dataset_id TEXT,
             posts_count INTEGER NOT NULL DEFAULT 0,
             comments_count INTEGER NOT NULL DEFAULT 0,
             error_message TEXT,
@@ -80,4 +85,16 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_posts_published_at ON posts(published_at);
         """
     )
+    for column, definition in {
+        "source": "TEXT NOT NULL DEFAULT 'debug'",
+        "apify_run_id": "TEXT",
+        "apify_actor_id": "TEXT",
+        "apify_actor_task_id": "TEXT",
+        "apify_dataset_id": "TEXT",
+    }.items():
+        existing_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(ingestion_runs)").fetchall()
+        }
+        if column not in existing_columns:
+            connection.execute(f"ALTER TABLE ingestion_runs ADD COLUMN {column} {definition}")
     connection.commit()
