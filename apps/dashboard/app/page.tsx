@@ -288,7 +288,7 @@ function VisualizationTab({
 
       <section className="tableShell">
         <div className="tableHeader">
-          <p>Top posts and repeated narratives</p>
+          <p>Top posts and repeated narratives (sorted by relevance, engagement, then latest ingested)</p>
         </div>
         <PostsOnlyTable posts={analytics.top_posts} />
       </section>
